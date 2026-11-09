@@ -12,23 +12,24 @@
   #stage{position:relative;flex:1;overflow:hidden;background:#000}
   video{width:100%;height:100%;object-fit:cover}
   #frame{position:absolute;inset:0;margin:auto;width:65%;aspect-ratio:1;border:3px solid #fff;border-radius:16px;box-shadow:0 0 0 999px rgba(0,0,0,.45)}
-  #result{padding:16px;min-height:96px;text-align:center;font-size:18px;transition:background .2s}
-  #result small{display:block;opacity:.85;font-size:14px;margin-top:4px}
+  #result{padding:16px;min-height:96px;text-align:center;font-size:18px}
+  #result small{display:block;opacity:.85;font-size:13px;margin-top:4px;word-break:break-all}
   .ok{background:#15803d}.dup{background:#b45309}.bad{background:#b91c1c}.wait{background:#222}
   button{margin:8px;padding:10px 16px;border:0;border-radius:8px;font-size:15px}
 </style>
 </head>
 <body>
-<header><span>Check-in scanner</span><span id="count">0 checked in</span></header>
+<header><span>Check-in scanner v2</span><span id="count">0 checked in</span></header>
 <div id="stage"><video id="v" playsinline muted></video><div id="frame"></div></div>
 <div id="result" class="wait">Starting camera…</div>
 <button id="torch" hidden>Toggle flashlight</button>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
 <script>
-
-const API_URL = 'https://script.google.com/macros/s/AKfycbzbzUekHGGbeyCdsqAqRokFCHk2JhRks0rPUii79pmkC5YPZOwbLl_ia2aKBhgG8Ldo/exec'; 
-const KEY = 'change-this-key';                              
+// ====== CONFIGURE THESE ======
+const API_URL = 'PASTE_YOUR_EXEC_URL_HERE'; // https://script.google.com/macros/s/.../exec
+const KEY = 'change-this-key';
+// =============================
 
 const v = document.getElementById('v'), box = document.getElementById('result');
 const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -42,6 +43,20 @@ function beep(ok) {
     o.frequency.value = ok ? 880 : 300; o.connect(a.destination); o.start(); o.stop(a.currentTime + .15);
   } catch (e) {}
   if (navigator.vibrate) navigator.vibrate(ok ? 80 : [80, 60, 80]);
+}
+
+// JSONP: loads the response as a script, which avoids browser cross-origin blocking
+function lookup(id) {
+  return new Promise((resolve, reject) => {
+    const name = 'cb' + Date.now();
+    const s = document.createElement('script');
+    const done = () => { clearTimeout(t); delete window[name]; s.remove(); };
+    const t = setTimeout(() => { done(); reject(new Error('timeout')); }, 15000);
+    window[name] = (data) => { done(); resolve(data); };
+    s.onerror = () => { done(); reject(new Error('script load failed')); };
+    s.src = API_URL + '?key=' + encodeURIComponent(KEY) + '&id=' + encodeURIComponent(id) + '&callback=' + name;
+    document.body.appendChild(s);
+  });
 }
 
 async function start() {
@@ -62,7 +77,7 @@ async function start() {
     show('wait', 'Point at a ticket QR code');
     requestAnimationFrame(tick);
   } catch (err) {
-    show('bad', 'Camera blocked<small>Allow camera access and make sure the page is opened over https://</small>');
+    show('bad', 'Camera blocked<small>Allow camera access and use https://</small>');
   }
 }
 
@@ -88,30 +103,21 @@ async function tick() {
 
 async function handle(id) {
   const now = Date.now();
-  if (id === lastId && now - lastAt < 3000) return; // ignore same code re-read
+  if (id === lastId && now - lastAt < 3000) return;
   lastId = id; lastAt = now; busy = true;
   show('wait', 'Checking…');
   try {
-    const d = await new Promise((resolve, reject) => {
-  const name = 'cb' + Date.now();
-  const s = document.createElement('script');
-  const done = () => { clearTimeout(t); delete window[name]; s.remove(); };
-  const t = setTimeout(() => { done(); reject(new Error('timeout')); }, 15000);
-  window[name] = (data) => { done(); resolve(data); };
-  s.onerror = () => { done(); reject(new Error('script load failed')); };
-  s.src = `${API_URL}?key=${encodeURIComponent(KEY)}&id=${encodeURIComponent(id)}&callback=${name}`;
-  document.body.appendChild(s);
-});
+    const d = await lookup(id);
     if (d.status === 'ok') {
       checkedIn++; document.getElementById('count').textContent = checkedIn + ' checked in';
-      beep(true); show('ok', `✅ ${d.name}<small>Checked in ${d.time}</small>`);
+      beep(true); show('ok', '✅ ' + d.name + '<small>Checked in ' + d.time + '</small>');
     } else if (d.status === 'duplicate') {
-      beep(false); show('dup', `⚠️ Already checked in<small>${d.name} · ${d.time}</small>`);
+      beep(false); show('dup', '⚠️ Already checked in<small>' + d.name + ' · ' + d.time + '</small>');
     } else {
-      beep(false); show('bad', `❌ ${d.message || 'Invalid ticket'}`);
+      beep(false); show('bad', '❌ ' + (d.message || 'Invalid ticket') + '<small>' + id + '</small>');
     }
   } catch (e) {
-    beep(false); show('bad', '❌ Network error<small>' + e.message + '<br>' + API_URL.slice(0, 45) + '</small>');
+    beep(false); show('bad', '❌ Network error<small>' + e.message + ' | ' + API_URL.slice(0, 40) + '</small>');
   }
   setTimeout(() => { busy = false; show('wait', 'Point at a ticket QR code'); }, 1500);
 }
