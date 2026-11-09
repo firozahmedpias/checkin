@@ -104,7 +104,7 @@ async function handle(id) {
       beep(false); show('bad', `❌ ${d.message || 'Invalid ticket'}`);
     }
   } catch (e) {
-    beep(false); show('bad', '❌ Network error<small>Check internet and try again</small>');
+    beep(false); show('bad', '❌ Network error<small>' + e.message + '<br>' + API_URL.slice(0, 45) + '</small>');
   }
   setTimeout(() => { busy = false; show('wait', 'Point at a ticket QR code'); }, 1500);
 }
