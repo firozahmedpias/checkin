@@ -92,8 +92,16 @@ async function handle(id) {
   lastId = id; lastAt = now; busy = true;
   show('wait', 'Checking…');
   try {
-    const res = await fetch(`${API_URL}?key=${encodeURIComponent(KEY)}&id=${encodeURIComponent(id)}`);
-    const d = await res.json();
+    const d = await new Promise((resolve, reject) => {
+  const name = 'cb' + Date.now();
+  const s = document.createElement('script');
+  const done = () => { clearTimeout(t); delete window[name]; s.remove(); };
+  const t = setTimeout(() => { done(); reject(new Error('timeout')); }, 15000);
+  window[name] = (data) => { done(); resolve(data); };
+  s.onerror = () => { done(); reject(new Error('script load failed')); };
+  s.src = `${API_URL}?key=${encodeURIComponent(KEY)}&id=${encodeURIComponent(id)}&callback=${name}`;
+  document.body.appendChild(s);
+});
     if (d.status === 'ok') {
       checkedIn++; document.getElementById('count').textContent = checkedIn + ' checked in';
       beep(true); show('ok', `✅ ${d.name}<small>Checked in ${d.time}</small>`);
